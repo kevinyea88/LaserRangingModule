@@ -1,4 +1,5 @@
-﻿#define _SGS_LRM_EXPORT
+﻿//#define _SGS_LRM_EXPORT
+
 #include "SGSLaserRangingModule.h"
 #include <windows.h>
 #include <stdio.h>
@@ -10,8 +11,10 @@
 
 #pragma comment(lib, "kernel32.lib")
 
+// Default device address
+#define DEFAULT_DEVICE_ADDRESS  0x80 // Default device address
 // Protocol command bytes
-#define CMD_BROADCAST_ADDR      0xFA
+#define ADDR_BROADCAST          0xFA
 #define CMD_CONFIG              0x04
 #define CMD_MEASURE             0x06
 
@@ -39,6 +42,8 @@
 #define RESP_CONTINUOUS         0x83
 #define RESP_DEVICE_ID          0x84
 #define RESP_LASER_CONTROL      0x85
+#define RESP_BROADCAST_MEASURE  0x86
+#define RESP_READ_CACHE         0x87
 
 // Hardware error codes as per protocol specification
 #define SGS_LRM_ERR_LOW_BATTERY         -110    // ERR-10: Low battery
@@ -67,12 +72,14 @@ typedef struct {
     bool continuousMeasurement;
     double lastDistance;
     bool laserOn; // Track laser status
-    int lastErrorCode; // Store last measurement error code
+    int lastErrorCode;          // Store last measurement error code (e.g., 16)
+    char lastErrorAscii[8];     // Store raw "ERR-XX" (e.g., "ERR-16"), NUL-terminated
     CRITICAL_SECTION lock;  // Per-device lock for thread safety
 } SGSLrmDevice;
 
 // Global device pool
 static SGSLrmDevice g_devicePool[MAX_DEVICES];
+static volatile LONG g_initOnceFlag = 0;
 static CRITICAL_SECTION g_poolLock;  // Lock for pool management
 static bool g_poolInitialized = false;
 
@@ -88,6 +95,41 @@ static void InitializeDevicePool();
 static void CleanupDevicePool();
 
 // Initialize device pool on first use
+static void InitializeDevicePool()
+{
+    // 確保只初始化一次（多執行緒安全）
+    if (InterlockedCompareExchange(&g_initOnceFlag, 1, 0) != 0) {
+        // 其他執行緒已在做或做完；等到 g_poolInitialized 為 true 即可返回
+        while (!g_poolInitialized) Sleep(0);
+        return;
+    }
+
+    InitializeCriticalSection(&g_poolLock);
+
+    // 初始化所有 slot（每個 slot 初始化處）
+    for (int i = 0; i < MAX_DEVICES; ++i) {
+        SGSLrmDevice* dev = &g_devicePool[i];
+
+        ZeroMemory(dev, sizeof(*dev));
+        dev->hSerial = INVALID_HANDLE_VALUE;
+        dev->inUse = false;
+        dev->isConnected = false;
+        dev->deviceAddress = DEFAULT_DEVICE_ADDRESS; // 統一用常數
+        dev->currentRange = 80;   // 80m
+        dev->currentResolution = 1;    // 1mm
+        dev->currentFrequency = 5;    // 5Hz
+        dev->continuousMeasurement = false;
+        dev->lastDistance = 0.0;
+        dev->laserOn = false;
+        dev->lastErrorCode = 0;
+        dev->lastErrorAscii[0] = '\0'; // ★ 清空 ASCII 錯誤字串
+        InitializeCriticalSection(&dev->lock);
+    }
+
+    g_poolInitialized = true;
+}
+
+/*
 static void InitializeDevicePool()
 {
     if (!g_poolInitialized) {
@@ -114,6 +156,7 @@ static void InitializeDevicePool()
     }
 }
 
+*/
 // Cleanup device pool (can be called at program exit if needed)
 static void CleanupDevicePool()
 {
@@ -168,6 +211,56 @@ SGS_LRM_API SGSLrmStatus SGSLrm_GetVersion(int* major, int* minor, int* patch)
 }
 
 // Device management
+
+SGS_LRM_API SGSLrmStatus SGSLrm_CreateHandle(SGSLrmHandle* handle)
+{
+    if (!handle) return SGS_LRM_INVALID_PARAMETER;
+
+    // 一次性初始化（thread-safe）
+    if (!g_poolInitialized) {
+        InitializeDevicePool();
+    }
+
+    EnterCriticalSection(&g_poolLock);
+
+    SGSLrmDevice* device = NULL;
+
+    // 找可用 slot
+    for (int i = 0; i < MAX_DEVICES; ++i) {
+        if (!g_devicePool[i].inUse) {
+            device = &g_devicePool[i];
+
+            // 重置該 slot 的運作狀態（不重建 lock）
+            device->hSerial = INVALID_HANDLE_VALUE;
+            device->isConnected = false;
+            device->deviceAddress = DEFAULT_DEVICE_ADDRESS; // ★ 統一常數
+            device->currentRange = 80;
+            device->currentResolution = 1;
+            device->currentFrequency = 5;
+            device->continuousMeasurement = false;
+            device->lastDistance = 0.0;
+            device->laserOn = false;
+            device->lastErrorCode = 0;
+            device->lastErrorAscii[0] = '\0'; // ★ 清空 ASCII 錯誤字串
+            device->callback = NULL;
+            device->userdata = NULL;
+            device->continuousThread = NULL;
+            memset(device->comPort, 0, sizeof(device->comPort));
+
+            device->inUse = true; // 借出這個 slot
+            break;
+        }
+    }
+
+    LeaveCriticalSection(&g_poolLock);
+
+    if (!device) return SGS_LRM_OUT_OF_MEMORY; // 無可用 slot
+
+    *handle = (SGSLrmHandle)device;
+    return SGS_LRM_SUCCESS;
+}
+
+/*
 SGS_LRM_API SGSLrmStatus SGSLrm_CreateHandle(SGSLrmHandle* handle)
 {
     if (!handle) {
@@ -198,6 +291,7 @@ SGS_LRM_API SGSLrmStatus SGSLrm_CreateHandle(SGSLrmHandle* handle)
             device->lastDistance = 0.0;
             device->laserOn = false;
             device->lastErrorCode = 0;
+            device->lastErrorAscii[0] = '\0';
             device->callback = NULL;
             device->userdata = NULL;
             device->continuousThread = NULL;
@@ -219,6 +313,7 @@ SGS_LRM_API SGSLrmStatus SGSLrm_CreateHandle(SGSLrmHandle* handle)
     return SGS_LRM_SUCCESS;
 }
 
+*/
 SGS_LRM_API SGSLrmStatus SGSLrm_DestroyHandle(SGSLrmHandle handle)
 {
     SGSLrmStatus status = ValidateHandle(handle);
@@ -405,14 +500,23 @@ static SGSLrmStatus ValidateHandle(SGSLrmHandle handle)
     return SGS_LRM_SUCCESS;
 }
 
+
+// Checksum calculation function
 static unsigned char CalculateChecksum(const unsigned char* data, int length)
 {
-    unsigned char sum = 0;
-    for (int i = 0; i < length; i++) {
-        sum += data[i];
-    }
-    return (~sum) + 1; // Two's complement
+    unsigned int sum = 0;
+    for (int i = 0; i < length; ++i) sum += data[i];
+    return (unsigned char)(0x100 - (sum & 0xFF));
 }
+
+//static unsigned char CalculateChecksum(const unsigned char* data, int length)
+//{
+//    unsigned char sum = 0;
+//    for (int i = 0; i < length; i++) {
+//        sum += data[i];
+//    }
+//    return (~sum) + 1; // Two's complement
+//}
 
 static SGSLrmStatus SendCommand(SGSLrmDevice* device, const unsigned char* command, int commandLength)
 {
@@ -463,6 +567,76 @@ static SGSLrmStatus ReceiveResponse(SGSLrmDevice* device, unsigned char* respons
     return SGS_LRM_SUCCESS;
 }
 
+
+static SGSLrmStatus ParseMeasurementResponse(SGSLrmDevice* device,
+    const unsigned char* response,
+    int length,
+    double* distance)
+{
+    if (!device || !response || !distance) return SGS_LRM_INVALID_PARAMETER;
+    if (length < 4) return SGS_LRM_COMMUNICATION_ERROR;
+
+    // 基本頭碼
+    if (response[0] != (unsigned char)device->deviceAddress) return SGS_LRM_COMMUNICATION_ERROR;
+    if (response[1] != CMD_MEASURE) return SGS_LRM_COMMUNICATION_ERROR;
+
+    // === 錯誤回覆：固定 10 bytes（ADDR 06 8X 'E' 'R' 'R' '-' d d CS）===
+    if (length == 10 &&
+        response[3] == 'E' && response[4] == 'R' && response[5] == 'R' && response[6] == '-' &&
+        isdigit((unsigned char)response[7]) && isdigit((unsigned char)response[8])) {
+
+        // 存數字碼
+        int code = (response[7] - '0') * 10 + (response[8] - '0');
+        device->lastErrorCode = code;
+
+        // 存 ASCII 原字串（含終止符）
+        memcpy(device->lastErrorAscii, &response[3], 6); // "ERR-XX"
+        device->lastErrorAscii[6] = '\0';
+
+        return SGS_LRM_MEASUREMENT_ERROR; // 通用錯誤狀態，細節由 Get* API 取
+    }
+
+    // === 成功回覆：允許 0x82/0x83/0x87 ===
+    if (!(response[2] == RESP_SINGLE_MEASURE ||
+        response[2] == RESP_CONTINUOUS ||
+        response[2] == RESP_READ_CACHE)) {
+        return SGS_LRM_COMMUNICATION_ERROR;
+    }
+
+    // 成功時清空上一筆錯誤
+    device->lastErrorCode = 0;
+    device->lastErrorAscii[0] = '\0';
+
+    // （以下沿用你原本的距離 ASCII 嚴格驗證與 strtod 轉換）
+    // 最小長度、安全檢查...
+    int dataLength = length - 4;
+    if (dataLength < 3 || dataLength > 12) return SGS_LRM_COMMUNICATION_ERROR;
+
+    char distanceStr[16] = { 0 };
+    memcpy(distanceStr, &response[3], dataLength);
+    distanceStr[dataLength] = '\0';
+
+    // 僅允許 [0-9] 與單一 '.'，不得首尾為 '.'
+    int dotCount = 0; bool hasDigit = false;
+    for (int i = 0; i < dataLength; ++i) {
+        unsigned char c = (unsigned char)distanceStr[i];
+        if (c == '.') { if (++dotCount > 1) return SGS_LRM_COMMUNICATION_ERROR; }
+        else if (isdigit(c)) { hasDigit = true; }
+        else { return SGS_LRM_COMMUNICATION_ERROR; }
+    }
+    if (!hasDigit || distanceStr[0] == '.' || distanceStr[dataLength - 1] == '.') return SGS_LRM_COMMUNICATION_ERROR;
+
+    char* endp = NULL;
+    double val = strtod(distanceStr, &endp);
+    if (!endp || *endp != '\0' || isnan(val) || isinf(val) || val < 0.0 || val > 9999.9999)
+        return SGS_LRM_COMMUNICATION_ERROR;
+
+    *distance = val;
+    return SGS_LRM_SUCCESS;
+}
+
+
+/*
 static SGSLrmStatus ParseMeasurementResponse(SGSLrmDevice* device, const unsigned char* response, int length, double* distance)
 {
     if (!device || !response || !distance || length < 4) {
@@ -613,75 +787,120 @@ static SGSLrmStatus ParseMeasurementResponse(SGSLrmDevice* device, const unsigne
     return SGS_LRM_COMMUNICATION_ERROR; // Invalid response format
 }
 
+*/
 SGS_LRM_API SGSLrmStatus SGSLrm_SingleMeasurement(SGSLrmHandle handle, double* distance)
 {
+    enum { MIN_RESP_LEN = 11 };
     SGSLrmStatus status = ValidateHandle(handle);
-    if (status != SGS_LRM_SUCCESS) {
-        return status;
-    }
-
-    if (!distance) {
-        return SGS_LRM_INVALID_PARAMETER;
-    }
+    if (status != SGS_LRM_SUCCESS) return status;
+    if (!distance) return SGS_LRM_INVALID_PARAMETER;
 
     SGSLrmDevice* device = (SGSLrmDevice*)handle;
-    
     EnterCriticalSection(&device->lock);
 
-    if (!device->isConnected) {
-        LeaveCriticalSection(&device->lock);
-        return SGS_LRM_NOT_CONNECTED;
-    }
+    if (!device->isConnected) { status = SGS_LRM_NOT_CONNECTED; goto cleanup; }
 
-    // Single measurement command: ADDR 06 02 CS
-    unsigned char command[4];
-    command[0] = (unsigned char)device->deviceAddress; // Default 0x80
-    command[1] = CMD_MEASURE;
-    command[2] = SUBCMD_SINGLE_MEASURE;
+    unsigned char command[4] = {
+        (unsigned char)device->deviceAddress, CMD_MEASURE, SUBCMD_SINGLE_MEASURE, 0
+    };
     command[3] = CalculateChecksum(command, 3);
 
-    status = SendCommand(device, command, 4);
-    if (status != SGS_LRM_SUCCESS) {
-        LeaveCriticalSection(&device->lock);
-        return status;
-    }
+    status = SendCommand(device, command, sizeof(command));
+    if (status != SGS_LRM_SUCCESS) goto cleanup;
 
-    // Receive response
     unsigned char response[64];
-    int receivedLength;
+    int receivedLength = 0;
     status = ReceiveResponse(device, response, sizeof(response), &receivedLength);
-    if (status != SGS_LRM_SUCCESS) {
-        LeaveCriticalSection(&device->lock);
-        return status;
+    if (status != SGS_LRM_SUCCESS) goto cleanup;
+
+    if (receivedLength < MIN_RESP_LEN) { status = SGS_LRM_COMMUNICATION_ERROR; goto cleanup; }
+
+    if (response[0] != (unsigned char)device->deviceAddress ||
+        response[1] != CMD_MEASURE || response[2] != RESP_SINGLE_MEASURE) {
+        status = SGS_LRM_COMMUNICATION_ERROR; goto cleanup;
     }
 
-    // Verify checksum
-    if (receivedLength < 4) {
-        LeaveCriticalSection(&device->lock);
-        return SGS_LRM_COMMUNICATION_ERROR;
-    }
-    
+    // CS 在 ReceiveResponse 裡已驗過的話可省；若沒有，保留這段
     unsigned char expectedChecksum = CalculateChecksum(response, receivedLength - 1);
-    if (response[receivedLength - 1] != expectedChecksum) {
-        LeaveCriticalSection(&device->lock);
-        return SGS_LRM_COMMUNICATION_ERROR;
-    }
+    if (response[receivedLength - 1] != expectedChecksum) { status = SGS_LRM_COMMUNICATION_ERROR; goto cleanup; }
 
-    // Parse measurement result
     status = ParseMeasurementResponse(device, response, receivedLength, distance);
-    if (status == SGS_LRM_SUCCESS) {
-        device->lastDistance = *distance;
-    }
+    if (status == SGS_LRM_SUCCESS) device->lastDistance = *distance;
 
+cleanup:
     LeaveCriticalSection(&device->lock);
     return status;
 }
+
+//SGS_LRM_API SGSLrmStatus SGSLrm_SingleMeasurement(SGSLrmHandle handle, double* distance)
+//{
+//    SGSLrmStatus status = ValidateHandle(handle);
+//    if (status != SGS_LRM_SUCCESS) {
+//        return status;
+//    }
+//
+//    if (!distance) {
+//        return SGS_LRM_INVALID_PARAMETER;
+//    }
+//
+//    SGSLrmDevice* device = (SGSLrmDevice*)handle;
+//    
+//    EnterCriticalSection(&device->lock);
+//
+//    if (!device->isConnected) {
+//        LeaveCriticalSection(&device->lock);
+//        return SGS_LRM_NOT_CONNECTED;
+//    }
+//
+//    // Single measurement command: ADDR 06 02 CS
+//    unsigned char command[4];
+//    command[0] = (unsigned char)device->deviceAddress; // Default 0x80
+//    command[1] = CMD_MEASURE;
+//    command[2] = SUBCMD_SINGLE_MEASURE;
+//    command[3] = CalculateChecksum(command, 3);
+//
+//    status = SendCommand(device, command, 4);
+//    if (status != SGS_LRM_SUCCESS) {
+//        LeaveCriticalSection(&device->lock);
+//        return status;
+//    }
+//
+//    // Receive response
+//    unsigned char response[64];
+//    int receivedLength;
+//    status = ReceiveResponse(device, response, sizeof(response), &receivedLength);
+//    if (status != SGS_LRM_SUCCESS) {
+//        LeaveCriticalSection(&device->lock);
+//        return status;
+//    }
+//
+//    // Verify checksum
+//    if (receivedLength < 4) {
+//        LeaveCriticalSection(&device->lock);
+//        return SGS_LRM_COMMUNICATION_ERROR;
+//    }
+//    
+//    unsigned char expectedChecksum = CalculateChecksum(response, receivedLength - 1);
+//    if (response[receivedLength - 1] != expectedChecksum) {
+//        LeaveCriticalSection(&device->lock);
+//        return SGS_LRM_COMMUNICATION_ERROR;
+//    }
+//
+//    // Parse measurement result
+//    status = ParseMeasurementResponse(device, response, receivedLength, distance);
+//    if (status == SGS_LRM_SUCCESS) {
+//        device->lastDistance = *distance;
+//    }
+//
+//    LeaveCriticalSection(&device->lock);
+//    return status;
+//}
 
 static DWORD WINAPI ContinuousMeasurementThread(LPVOID lpParam)
 {
     SGSLrmDevice* device = (SGSLrmDevice*)lpParam;
     if (!device) {
-        return -1;
+        return 1;
     }
 
     // Send continuous measurement command only once
@@ -856,7 +1075,7 @@ SGS_LRM_API SGSLrmStatus SGSLrm_SetRange(SGSLrmHandle handle, int rangeMeters)
 
     // Set range command: FA 04 09 RANGE CS (correct protocol format)
     unsigned char command[5];
-    command[0] = CMD_BROADCAST_ADDR;
+    command[0] = ADDR_BROADCAST;
     command[1] = CMD_CONFIG;
     command[2] = SUBCMD_SET_RANGE;
     command[3] = rangeValue;
@@ -896,7 +1115,7 @@ SGS_LRM_API SGSLrmStatus SGSLrm_SetResolution(SGSLrmHandle handle, int resolutio
     // Set resolution command: FA 04 0C RESOLUTION CS
     // RESOLUTION: 0x01 for 1mm, 0x02 for 0.1mm
     unsigned char command[5];
-    command[0] = CMD_BROADCAST_ADDR;
+    command[0] = ADDR_BROADCAST;
     command[1] = CMD_CONFIG;
     command[2] = SUBCMD_SET_RESOLUTION;
     command[3] = (unsigned char)resolution; // Direct mapping: 1->0x01, 2->0x02
@@ -939,7 +1158,7 @@ SGS_LRM_API SGSLrmStatus SGSLrm_SetFrequency(SGSLrmHandle handle, int frequency)
 
     // Set frequency command: FA 04 0A FREQ CS (correct protocol format)
     unsigned char command[5];
-    command[0] = CMD_BROADCAST_ADDR;
+    command[0] = ADDR_BROADCAST;
     command[1] = CMD_CONFIG;
     command[2] = SUBCMD_SET_FREQUENCY;
     command[3] = freqValue;
@@ -984,7 +1203,7 @@ SGS_LRM_API SGSLrmStatus SGSLrm_SetMeasurementInterval(SGSLrmHandle handle, int 
     // Set measurement interval command: FA 04 05 INTERVAL CS
     // INTERVAL: 00=continuous (0S), 01=1 second interval as per protocol specification
     unsigned char command[5];
-    command[0] = CMD_BROADCAST_ADDR;
+    command[0] = ADDR_BROADCAST;
     command[1] = CMD_CONFIG;
     command[2] = SUBCMD_SET_INTERVAL;
     command[3] = intervalValue; // 0x00 or 0x01 based on protocol
@@ -1105,7 +1324,7 @@ SGS_LRM_API SGSLrmStatus SGSLrm_SetAddress(SGSLrmHandle handle, int address)
 
     // Set address command: FA 04 01 ADDR CS
     unsigned char command[5];
-    command[0] = CMD_BROADCAST_ADDR;
+    command[0] = ADDR_BROADCAST;
     command[1] = CMD_CONFIG;
     command[2] = SUBCMD_SET_ADDRESS;
     command[3] = (unsigned char)address;
@@ -1228,7 +1447,7 @@ SGS_LRM_API SGSLrmStatus SGSLrm_SetDistanceCorrection(SGSLrmHandle handle, int c
 
     // Distance correction command: FA 04 06 SIGN VALUE CS
     unsigned char command[5];
-    command[0] = CMD_BROADCAST_ADDR;
+    command[0] = ADDR_BROADCAST;
     command[1] = CMD_CONFIG;
     command[2] = SUBCMD_SET_CORRECTION;
     
@@ -1242,7 +1461,7 @@ SGS_LRM_API SGSLrmStatus SGSLrm_SetDistanceCorrection(SGSLrmHandle handle, int c
     
     // This is actually a 6-byte command: FA 04 06 SIGN VALUE CS
     unsigned char fullCommand[6];
-    fullCommand[0] = CMD_BROADCAST_ADDR;
+    fullCommand[0] = ADDR_BROADCAST;
     fullCommand[1] = CMD_CONFIG; 
     fullCommand[2] = SUBCMD_SET_CORRECTION;
     fullCommand[3] = command[3]; // Sign
@@ -1278,7 +1497,7 @@ SGS_LRM_API SGSLrmStatus SGSLrm_SetStartPosition(SGSLrmHandle handle, int positi
 
     // Set start position command: FA 04 08 POSITION CS
     unsigned char command[5];
-    command[0] = CMD_BROADCAST_ADDR;
+    command[0] = ADDR_BROADCAST;
     command[1] = CMD_CONFIG;
     command[2] = SUBCMD_SET_POSITION;
     command[3] = (unsigned char)position; // 0=tail, 1=top
@@ -1313,7 +1532,7 @@ SGS_LRM_API SGSLrmStatus SGSLrm_SetAutoMeasurement(SGSLrmHandle handle, int enab
 
     // Set auto measurement command: FA 04 0D ENABLE CS
     unsigned char command[5];
-    command[0] = CMD_BROADCAST_ADDR;
+    command[0] = ADDR_BROADCAST;
     command[1] = CMD_CONFIG;
     command[2] = SUBCMD_SET_AUTO_MEASURE;
     command[3] = (unsigned char)enable; // 0=disable, 1=enable
@@ -1343,7 +1562,7 @@ SGS_LRM_API SGSLrmStatus SGSLrm_BroadcastMeasurement(SGSLrmHandle handle)
 
     // Broadcast measurement command: FA 06 06 FA (no response, result stored in module cache)
     unsigned char command[4];
-    command[0] = CMD_BROADCAST_ADDR;
+    command[0] = ADDR_BROADCAST;
     command[1] = CMD_MEASURE;
     command[2] = SUBCMD_BROADCAST_MEASURE;
     command[3] = 0xFA; // Fixed checksum as per protocol
@@ -1441,7 +1660,7 @@ SGS_LRM_API SGSLrmStatus SGSLrm_ReadDeviceID(SGSLrmHandle handle, char* deviceId
     // Read machine ID command: FA 06 04 FC
     // Protocol specifies fixed checksum 0xFC for this command
     unsigned char command[4];
-    command[0] = CMD_BROADCAST_ADDR;
+    command[0] = ADDR_BROADCAST;
     command[1] = CMD_MEASURE;
     command[2] = SUBCMD_READ_ID;
     command[3] = 0xFC; // Fixed checksum as per protocol
@@ -1478,7 +1697,7 @@ SGS_LRM_API SGSLrmStatus SGSLrm_ReadDeviceID(SGSLrmHandle handle, char* deviceId
 
     // Parse device ID response
     // Response format: FA 06 84 [ASCII DATA...] CS
-    if (response[0] == CMD_BROADCAST_ADDR && response[1] == CMD_MEASURE && response[2] == RESP_DEVICE_ID) {
+    if (response[0] == ADDR_BROADCAST && response[1] == CMD_MEASURE && response[2] == RESP_DEVICE_ID) {
         // Extract device ID data (excluding FA, 06, 84, and CS)
         int dataLength = receivedLength - 4; // Subtract header (3 bytes) and checksum (1 byte)
         if (dataLength > 0 && dataLength < bufferSize) {
@@ -1502,7 +1721,7 @@ SGS_LRM_API SGSLrmStatus SGSLrm_ReadDeviceID(SGSLrmHandle handle, char* deviceId
 static const char* GetCommandDescription(unsigned char cmd1, unsigned char cmd2)
 {
     // Protocol command reference
-    if (cmd1 == CMD_BROADCAST_ADDR) { // 0xFA
+    if (cmd1 == ADDR_BROADCAST) { // 0xFA
         if (cmd2 == CMD_CONFIG) { // 0x04
             return "Broadcast configuration command";
         } else if (cmd2 == CMD_MEASURE) { // 0x06
@@ -1598,6 +1817,28 @@ SGS_LRM_API SGSLrmStatus SGSLrm_GetMeasurementError(SGSLrmHandle handle, int* er
     
     EnterCriticalSection(&device->lock);
     *errorCode = device->lastErrorCode;
+    LeaveCriticalSection(&device->lock);
+
+    return SGS_LRM_SUCCESS;
+}
+
+SGS_LRM_API SGSLrmStatus SGSLrm_GetLastHardwareErrorAscii(SGSLrmHandle handle,
+    char* buf, int bufSize)
+{
+    SGSLrmStatus status = ValidateHandle(handle);
+    if (status != SGS_LRM_SUCCESS) return status;
+    if (!buf || bufSize <= 0) return SGS_LRM_INVALID_PARAMETER;
+
+    SGSLrmDevice* device = (SGSLrmDevice*)handle;
+
+    EnterCriticalSection(&device->lock);
+    // 若沒有錯誤，回空字串，維持簡單語義
+    if (device->lastErrorAscii[0] == '\0') {
+        if (bufSize > 0) buf[0] = '\0';
+    }
+    else {
+        strncpy_s(buf, bufSize, device->lastErrorAscii, _TRUNCATE);
+    }
     LeaveCriticalSection(&device->lock);
 
     return SGS_LRM_SUCCESS;

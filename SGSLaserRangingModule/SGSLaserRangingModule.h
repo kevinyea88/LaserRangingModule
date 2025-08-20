@@ -25,15 +25,6 @@ extern "C" {
 #define SGS_LRM_OUT_OF_MEMORY           -6       // Out of memory
 #define SGS_LRM_MEASUREMENT_ERROR       -7       // Measurement error
 
-	// Hardware error codes (from device protocol)
-#define SGS_LRM_ERR_LOW_BATTERY         -110    // ERR-10: Low battery
-#define SGS_LRM_ERR_CALCULATION_ERROR   -114    // ERR-14: Calculation error
-#define SGS_LRM_ERR_OUT_OF_RANGE        -115    // ERR-15: Out of range
-#define SGS_LRM_ERR_WEAK_SIGNAL         -116    // ERR-16: Weak signal or timeout
-#define SGS_LRM_ERR_STRONG_LIGHT        -118    // ERR-18: Strong ambient light
-#define SGS_LRM_ERR_DISPLAY_RANGE       -126    // ERR-26: Display range exceeded
-
-
 	// Library management
 	SGS_LRM_API SGSLrmStatus SGSLrm_GetVersion(int* major, int* minor, int* patch);
 
@@ -76,6 +67,7 @@ extern "C" {
 	SGS_LRM_API SGSLrmStatus SGSLrm_ReadDeviceID(SGSLrmHandle handle, char* deviceId, int bufferSize);
 	SGS_LRM_API SGSLrmStatus SGSLrm_Shutdown(SGSLrmHandle handle);
 	SGS_LRM_API SGSLrmStatus SGSLrm_GetMeasurementError(SGSLrmHandle handle, int* errorCode);
+	SGS_LRM_API SGSLrmStatus SGSLrm_GetLastHardwareErrorAscii(SGSLrmHandle handle, char* buf, int bufSize);
 	
 #if defined(__cplusplus)
 }
