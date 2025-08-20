@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <ctype.h>
+#include <math.h>
 
 #pragma comment(lib, "kernel32.lib")
 
@@ -65,6 +67,7 @@ typedef struct {
     bool continuousMeasurement;
     double lastDistance;
     bool laserOn; // Track laser status
+    int lastErrorCode; // Store last measurement error code
     CRITICAL_SECTION lock;  // Per-device lock for thread safety
 } SGSLrmDevice;
 
@@ -103,6 +106,7 @@ static void InitializeDevicePool()
             g_devicePool[i].continuousMeasurement = false;
             g_devicePool[i].lastDistance = 0.0;
             g_devicePool[i].laserOn = false;
+            g_devicePool[i].lastErrorCode = 0;
             InitializeCriticalSection(&g_devicePool[i].lock);
         }
         
@@ -193,6 +197,7 @@ SGS_LRM_API SGSLrmStatus SGSLrm_CreateHandle(SGSLrmHandle* handle)
             device->continuousMeasurement = false;
             device->lastDistance = 0.0;
             device->laserOn = false;
+            device->lastErrorCode = 0;
             device->callback = NULL;
             device->userdata = NULL;
             device->continuousThread = NULL;
@@ -428,6 +433,9 @@ static SGSLrmStatus SendCommand(SGSLrmDevice* device, const unsigned char* comma
         return SGS_LRM_COMMUNICATION_ERROR;
     }
 
+    // Add 10ms delay after sending command
+    Sleep(10);
+
     return SGS_LRM_SUCCESS;
 }
 
@@ -480,25 +488,38 @@ static SGSLrmStatus ParseMeasurementResponse(SGSLrmDevice* device, const unsigne
 
     // Check if this is an error response
     // Error format: "ERR-XX" where XX is the error code
-    if (length >= 9) { // Minimum for error: ADDR CMD STATUS 'E' 'R' 'R' '-' 'X' 'X' CS
+    // Minimum for error: ADDR CMD STATUS 'E' 'R' 'R' '-' 'X' 'X' CS = 10 bytes
+    if (length >= 10 && length <= 12) // More strict length check for error responses
+    {
         // Check for "ERR-" pattern starting at response[3]
         if (response[3] == 'E' && response[4] == 'R' && response[5] == 'R' && response[6] == '-') {
-            // Extract error code digits
+            // Verify we have exactly 2 error code digits
+            if (length != 10) { // ADDR CMD STATUS E R R - X X CS
+                return SGS_LRM_COMMUNICATION_ERROR; // Invalid error response length
+            }
+            
+            // Verify error code digits are valid ASCII numbers
+            if (!isdigit(response[7]) || !isdigit(response[8])) {
+                return SGS_LRM_COMMUNICATION_ERROR; // Invalid error code format
+            }
+            
+            // Extract error code digits with strict validation
             char errorCode[3] = {0};
             errorCode[0] = response[7];
             errorCode[1] = response[8];
             
             int code = atoi(errorCode);
-            // Map protocol error codes to API status codes
-            switch (code) {
-                case 10: return SGS_LRM_ERR_LOW_BATTERY;      // ERR-10: Low battery
-                case 14: return SGS_LRM_ERR_CALCULATION_ERROR; // ERR-14: Calculation error
-                case 15: return SGS_LRM_ERR_OUT_OF_RANGE;     // ERR-15: Out of range
-                case 16: return SGS_LRM_ERR_WEAK_SIGNAL;      // ERR-16: Weak signal or timeout
-                case 18: return SGS_LRM_ERR_STRONG_LIGHT;     // ERR-18: Strong ambient light
-                case 26: return SGS_LRM_ERR_DISPLAY_RANGE;    // ERR-26: Display range exceeded
-                default: return -100; // Generic hardware error for unknown codes
+            
+            // Validate error code is within expected range
+            if (code < 10 || code > 99) {
+                return SGS_LRM_COMMUNICATION_ERROR; // Invalid error code range
             }
+            
+            // Store the error code in device structure
+            device->lastErrorCode = code;
+            
+            // Return SGS_LRM_MEASUREMENT_ERROR for all measurement errors
+            return SGS_LRM_MEASUREMENT_ERROR;
         }
     }
 
@@ -508,26 +529,84 @@ static SGSLrmStatus ParseMeasurementResponse(SGSLrmDevice* device, const unsigne
         // response[2] == 0x82: Single measurement response
         // response[2] == 0x83: Continuous measurement response
         
+        // Clear error code on successful measurement
+        device->lastErrorCode = 0;
+        
         // Extract ASCII distance data
         // Data starts from response[3] and excludes the last checksum byte
         int dataLength = length - 4; // Exclude ADDR, CMD, STATUS, and CS
         
-        if (dataLength > 0 && dataLength < 16) {
+        // More strict validation for distance data length
+        // Valid formats: "XXX.XXX" (7 chars) or "XXX.XXXX" (8 chars) for typical distances
+        // Allow range from 3 to 12 characters for flexibility: "1.2" to "123.123456"
+        if (dataLength >= 3 && dataLength <= 12) {
             char distanceStr[16] = {0};
             
             // Copy ASCII distance data (e.g., "123.456" or "123.4567")
             memcpy(distanceStr, &response[3], dataLength);
             distanceStr[dataLength] = '\0';
             
-            // Convert ASCII string to double
-            char* endPtr;
-            double parsedDistance = strtod(distanceStr, &endPtr);
+            // Enhanced ASCII validation - ensure all characters are valid for distance
+            bool validFormat = true;
+            int decimalCount = 0;
             
-            // Validate conversion
-            if (endPtr != distanceStr && parsedDistance >= 0.0) {
-                *distance = parsedDistance;
-                return SGS_LRM_SUCCESS;
+            for (int i = 0; i < dataLength; i++) {
+                char c = distanceStr[i];
+                if (c == '.') {
+                    decimalCount++;
+                    if (decimalCount > 1) {
+                        validFormat = false; // Multiple decimal points
+                        break;
+                    }
+                } else if (!isdigit(c)) {
+                    validFormat = false; // Invalid character
+                    break;
+                }
             }
+            
+            // Additional format validation
+            if (validFormat) {
+                // Ensure string doesn't start or end with decimal point
+                if (distanceStr[0] == '.' || distanceStr[dataLength-1] == '.') {
+                    validFormat = false;
+                }
+                
+                // Ensure we have at least one digit
+                bool hasDigit = false;
+                for (int i = 0; i < dataLength; i++) {
+                    if (isdigit(distanceStr[i])) {
+                        hasDigit = true;
+                        break;
+                    }
+                }
+                if (!hasDigit) {
+                    validFormat = false;
+                }
+            }
+            
+            if (validFormat) {
+                // Convert ASCII string to double with strict validation
+                char* endPtr = NULL;
+                double parsedDistance = strtod(distanceStr, &endPtr);
+                
+                // Strict validation of conversion
+                if (endPtr != NULL && *endPtr == '\0' && // Entire string was converted
+                    endPtr != distanceStr &&             // Conversion actually occurred
+                    parsedDistance >= 0.0 &&             // Non-negative distance
+                    parsedDistance <= 9999.9999 &&       // Reasonable maximum distance
+                    !isinf(parsedDistance) &&            // Not infinite
+                    !isnan(parsedDistance))               // Not NaN
+                {
+                    *distance = parsedDistance;
+                    return SGS_LRM_SUCCESS;
+                } else {
+                    return SGS_LRM_COMMUNICATION_ERROR; // Invalid distance value
+                }
+            } else {
+                return SGS_LRM_COMMUNICATION_ERROR; // Invalid ASCII format
+            }
+        } else {
+            return SGS_LRM_COMMUNICATION_ERROR; // Invalid data length
         }
     }
 
@@ -643,6 +722,9 @@ static DWORD WINAPI ContinuousMeasurementThread(LPVOID lpParam)
         unsigned char response[64];
         int receivedLength;
         status = ReceiveResponse(device, response, sizeof(response), &receivedLength);
+
+        // Debug output: show received data (commented out for production)
+        // printf("Received %d bytes\n", receivedLength);
         
         if (status == SGS_LRM_SUCCESS && receivedLength >= 4) {
             // Verify checksum
@@ -663,7 +745,7 @@ static DWORD WINAPI ContinuousMeasurementThread(LPVOID lpParam)
         }
 
         // Wait for a short interval to avoid overwhelming the system
-        Sleep(10); // 10ms interval for receiving data
+        Sleep(5); // 10ms interval for receiving data
     }
 
     return 0;
@@ -1499,4 +1581,24 @@ SGS_LRM_API SGSLrmStatus SGSLrm_Shutdown(SGSLrmHandle handle)
 
     LeaveCriticalSection(&device->lock);
     return SGS_LRM_COMMUNICATION_ERROR;
+}
+
+SGS_LRM_API SGSLrmStatus SGSLrm_GetMeasurementError(SGSLrmHandle handle, int* errorCode)
+{
+    SGSLrmStatus status = ValidateHandle(handle);
+    if (status != SGS_LRM_SUCCESS) {
+        return status;
+    }
+
+    if (!errorCode) {
+        return SGS_LRM_INVALID_PARAMETER;
+    }
+
+    SGSLrmDevice* device = (SGSLrmDevice*)handle;
+    
+    EnterCriticalSection(&device->lock);
+    *errorCode = device->lastErrorCode;
+    LeaveCriticalSection(&device->lock);
+
+    return SGS_LRM_SUCCESS;
 }

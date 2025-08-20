@@ -23,6 +23,7 @@ extern "C" {
 #define SGS_LRM_COMMUNICATION_ERROR     -4       // Communication error
 #define SGS_LRM_TIMEOUT                 -5       // Operation timeout
 #define SGS_LRM_OUT_OF_MEMORY           -6       // Out of memory
+#define SGS_LRM_MEASUREMENT_ERROR       -7       // Measurement error
 
 	// Hardware error codes (from device protocol)
 #define SGS_LRM_ERR_LOW_BATTERY         -110    // ERR-10: Low battery
@@ -74,7 +75,8 @@ extern "C" {
 	SGS_LRM_API SGSLrmStatus SGSLrm_EnumComPorts(char* portList, int bufferSize);
 	SGS_LRM_API SGSLrmStatus SGSLrm_ReadDeviceID(SGSLrmHandle handle, char* deviceId, int bufferSize);
 	SGS_LRM_API SGSLrmStatus SGSLrm_Shutdown(SGSLrmHandle handle);
-
+	SGS_LRM_API SGSLrmStatus SGSLrm_GetMeasurementError(SGSLrmHandle handle, int* errorCode);
+	
 #if defined(__cplusplus)
 }
 #endif
