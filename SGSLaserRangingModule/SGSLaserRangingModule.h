@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <stdbool.h>
 
@@ -25,6 +25,26 @@ extern "C" {
 #define SGS_LRM_OUT_OF_MEMORY           -6       // Out of memory
 #define SGS_LRM_MEASUREMENT_ERROR       -7       // Measurement error
 
+	typedef int SGSLrmRange;
+#define SGS_LRM_RANGE_5M      0
+#define SGS_LRM_RANGE_10M     1
+#define SGS_LRM_RANGE_30M     2
+#define SGS_LRM_RANGE_50M     3
+#define SGS_LRM_RANGE_80M     4
+
+	typedef int SGSLrmResolution;
+#define SGS_LRM_RESOLUTION_1MM		0
+#define SGS_LRM_RESOLUTION_100UM	1
+
+	typedef int SGSLrmFrequency;
+#define SGS_LRM_FREQUENCY_5HZ      0
+#define SGS_LRM_FREQUENCY_10HZ     1
+#define SGS_LRM_FREQUENCY_20HZ     2
+
+	typedef int SGSLrmStartPosition;
+#define SGS_LRM_START_POSITION_TAIL 0
+#define SGS_LRM_START_POSITION_TOP  1
+
 	// Library management
 	SGS_LRM_API SGSLrmStatus SGSLrm_GetVersion(int* major, int* minor, int* patch);
 
@@ -37,13 +57,13 @@ extern "C" {
 
 	// Device configuration
 	SGS_LRM_API SGSLrmStatus SGSLrm_SetAddress(SGSLrmHandle handle, int address);
-	SGS_LRM_API SGSLrmStatus SGSLrm_SetRange(SGSLrmHandle handle, int rangeMeters); // 5,10,30,50,80
-	SGS_LRM_API SGSLrmStatus SGSLrm_SetResolution(SGSLrmHandle handle, int resolution); // 1 for 1mm, 2 for 0.1mm
-	SGS_LRM_API SGSLrmStatus SGSLrm_SetFrequency(SGSLrmHandle handle, int frequency); // 3-20Hz
+	SGS_LRM_API SGSLrmStatus SGSLrm_SetRange(SGSLrmHandle handle, SGSLrmRange range);
+	SGS_LRM_API SGSLrmStatus SGSLrm_SetResolution(SGSLrmHandle handle, SGSLrmResolution resolution);
+	SGS_LRM_API SGSLrmStatus SGSLrm_SetFrequency(SGSLrmHandle handle, SGSLrmFrequency frequency);
 	SGS_LRM_API SGSLrmStatus SGSLrm_SetMeasurementInterval(SGSLrmHandle handle, int intervalMs);
 	SGS_LRM_API SGSLrmStatus SGSLrm_SetDistanceCorrection(SGSLrmHandle handle, int correctionMm); // Distance correction in mm
-	SGS_LRM_API SGSLrmStatus SGSLrm_SetStartPosition(SGSLrmHandle handle, int position); // 0=tail, 1=top
-	SGS_LRM_API SGSLrmStatus SGSLrm_SetAutoMeasurement(SGSLrmHandle handle, int enable); // Auto measurement on power up
+	SGS_LRM_API SGSLrmStatus SGSLrm_SetStartPosition(SGSLrmHandle handle, SGSLrmStartPosition position); // 0=tail, 1=top
+	SGS_LRM_API SGSLrmStatus SGSLrm_SetAutoMeasurement(SGSLrmHandle handle, bool enable); // Auto measurement on power up
 
 	// Measurement functions
 	SGS_LRM_API SGSLrmStatus SGSLrm_SingleMeasurement(SGSLrmHandle handle, double* distance);

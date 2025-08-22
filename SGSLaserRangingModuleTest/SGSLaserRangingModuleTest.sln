@@ -1,26 +1,60 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
-VisualStudioVersion = 17.14.36408.4 d17.14
+VisualStudioVersion = 17.14.36408.4
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SGSLaserRangingModuleTest", "SGSLaserRangingModuleTest.vcxproj", "{C7CC467F-95EF-2DC1-74F3-D6DF0C2C4D50}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SGSLaserRangingModule", "..\SGSLaserRangingModule\SGSLaserRangingModule.vcxproj", "{D75A3111-F6C4-4272-A4E0-7DF7B1C1A0FC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SGService.LaserRangingModule.Monitor", "..\SGService.LaserRangingModule.Monitor\SGService.LaserRangingModule.Monitor.csproj", "{0F21E30E-B935-AF75-A923-3942AE1CA284}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
 		Debug|x64 = Debug|x64
 		Debug|x86 = Debug|x86
+		Release|Any CPU = Release|Any CPU
 		Release|x64 = Release|x64
 		Release|x86 = Release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{C7CC467F-95EF-2DC1-74F3-D6DF0C2C4D50}.Debug|Any CPU.ActiveCfg = Debug|x64
+		{C7CC467F-95EF-2DC1-74F3-D6DF0C2C4D50}.Debug|Any CPU.Build.0 = Debug|x64
 		{C7CC467F-95EF-2DC1-74F3-D6DF0C2C4D50}.Debug|x64.ActiveCfg = Debug|x64
 		{C7CC467F-95EF-2DC1-74F3-D6DF0C2C4D50}.Debug|x64.Build.0 = Debug|x64
 		{C7CC467F-95EF-2DC1-74F3-D6DF0C2C4D50}.Debug|x86.ActiveCfg = Debug|Win32
 		{C7CC467F-95EF-2DC1-74F3-D6DF0C2C4D50}.Debug|x86.Build.0 = Debug|Win32
+		{C7CC467F-95EF-2DC1-74F3-D6DF0C2C4D50}.Release|Any CPU.ActiveCfg = Release|x64
+		{C7CC467F-95EF-2DC1-74F3-D6DF0C2C4D50}.Release|Any CPU.Build.0 = Release|x64
 		{C7CC467F-95EF-2DC1-74F3-D6DF0C2C4D50}.Release|x64.ActiveCfg = Release|x64
 		{C7CC467F-95EF-2DC1-74F3-D6DF0C2C4D50}.Release|x64.Build.0 = Release|x64
 		{C7CC467F-95EF-2DC1-74F3-D6DF0C2C4D50}.Release|x86.ActiveCfg = Release|Win32
 		{C7CC467F-95EF-2DC1-74F3-D6DF0C2C4D50}.Release|x86.Build.0 = Release|Win32
+		{D75A3111-F6C4-4272-A4E0-7DF7B1C1A0FC}.Debug|Any CPU.ActiveCfg = Debug|x64
+		{D75A3111-F6C4-4272-A4E0-7DF7B1C1A0FC}.Debug|Any CPU.Build.0 = Debug|x64
+		{D75A3111-F6C4-4272-A4E0-7DF7B1C1A0FC}.Debug|x64.ActiveCfg = Debug|x64
+		{D75A3111-F6C4-4272-A4E0-7DF7B1C1A0FC}.Debug|x64.Build.0 = Debug|x64
+		{D75A3111-F6C4-4272-A4E0-7DF7B1C1A0FC}.Debug|x86.ActiveCfg = Debug|Win32
+		{D75A3111-F6C4-4272-A4E0-7DF7B1C1A0FC}.Debug|x86.Build.0 = Debug|Win32
+		{D75A3111-F6C4-4272-A4E0-7DF7B1C1A0FC}.Release|Any CPU.ActiveCfg = Release|x64
+		{D75A3111-F6C4-4272-A4E0-7DF7B1C1A0FC}.Release|Any CPU.Build.0 = Release|x64
+		{D75A3111-F6C4-4272-A4E0-7DF7B1C1A0FC}.Release|x64.ActiveCfg = Release|x64
+		{D75A3111-F6C4-4272-A4E0-7DF7B1C1A0FC}.Release|x64.Build.0 = Release|x64
+		{D75A3111-F6C4-4272-A4E0-7DF7B1C1A0FC}.Release|x86.ActiveCfg = Release|Win32
+		{D75A3111-F6C4-4272-A4E0-7DF7B1C1A0FC}.Release|x86.Build.0 = Release|Win32
+		{0F21E30E-B935-AF75-A923-3942AE1CA284}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0F21E30E-B935-AF75-A923-3942AE1CA284}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0F21E30E-B935-AF75-A923-3942AE1CA284}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{0F21E30E-B935-AF75-A923-3942AE1CA284}.Debug|x64.Build.0 = Debug|Any CPU
+		{0F21E30E-B935-AF75-A923-3942AE1CA284}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{0F21E30E-B935-AF75-A923-3942AE1CA284}.Debug|x86.Build.0 = Debug|Any CPU
+		{0F21E30E-B935-AF75-A923-3942AE1CA284}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0F21E30E-B935-AF75-A923-3942AE1CA284}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0F21E30E-B935-AF75-A923-3942AE1CA284}.Release|x64.ActiveCfg = Release|Any CPU
+		{0F21E30E-B935-AF75-A923-3942AE1CA284}.Release|x64.Build.0 = Release|Any CPU
+		{0F21E30E-B935-AF75-A923-3942AE1CA284}.Release|x86.ActiveCfg = Release|Any CPU
+		{0F21E30E-B935-AF75-A923-3942AE1CA284}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -63,9 +63,6 @@ typedef struct {
     bool isConnected;
     bool inUse;  // Flag to indicate if this slot is in use
     int deviceAddress;
-    int currentRange;
-    int currentResolution;
-    int currentFrequency;
     SGSLrm_MeasurementCallback callback;
     void* userdata;
     HANDLE continuousThread;
@@ -115,9 +112,6 @@ static void InitializeDevicePool()
         dev->inUse = false;
         dev->isConnected = false;
         dev->deviceAddress = DEFAULT_DEVICE_ADDRESS; // 統一用常數
-        dev->currentRange = 80;   // 80m
-        dev->currentResolution = 1;    // 1mm
-        dev->currentFrequency = 5;    // 5Hz
         dev->continuousMeasurement = false;
         dev->lastDistance = 0.0;
         dev->laserOn = false;
@@ -234,9 +228,6 @@ SGS_LRM_API SGSLrmStatus SGSLrm_CreateHandle(SGSLrmHandle* handle)
             device->hSerial = INVALID_HANDLE_VALUE;
             device->isConnected = false;
             device->deviceAddress = DEFAULT_DEVICE_ADDRESS; // ★ 統一常數
-            device->currentRange = 80;
-            device->currentResolution = 1;
-            device->currentFrequency = 5;
             device->continuousMeasurement = false;
             device->lastDistance = 0.0;
             device->laserOn = false;
@@ -1046,7 +1037,7 @@ SGS_LRM_API SGSLrmStatus SGSLrm_StopContinuousMeasurement(SGSLrmHandle handle)
     return SGS_LRM_SUCCESS;
 }
 
-SGS_LRM_API SGSLrmStatus SGSLrm_SetRange(SGSLrmHandle handle, int rangeMeters)
+SGS_LRM_API SGSLrmStatus SGSLrm_SetRange(SGSLrmHandle handle, SGSLrmRange range)
 {
     SGSLrmStatus status = ValidateHandle(handle);
     if (status != SGS_LRM_SUCCESS) {
@@ -1055,12 +1046,12 @@ SGS_LRM_API SGSLrmStatus SGSLrm_SetRange(SGSLrmHandle handle, int rangeMeters)
 
     // Validate range values (5, 10, 30, 50, 80 meters) according to protocol
     unsigned char rangeValue;
-    switch (rangeMeters) {
-    case 5:  rangeValue = 0x05; break;  // 5m
-    case 10: rangeValue = 0x0A; break;  // 10m  
-    case 30: rangeValue = 0x1E; break;  // 30m
-    case 50: rangeValue = 0x32; break;  // 50m
-    case 80: rangeValue = 0x50; break;  // 80m
+    switch (range) {
+    case SGS_LRM_RANGE_5M:  rangeValue = 0x05; break;  // 5m
+    case SGS_LRM_RANGE_10M: rangeValue = 0x0A; break;  // 10m  
+    case SGS_LRM_RANGE_30M: rangeValue = 0x1E; break;  // 30m
+    case SGS_LRM_RANGE_50M: rangeValue = 0x32; break;  // 50m
+    case SGS_LRM_RANGE_80M: rangeValue = 0x50; break;  // 80m
     default: return SGS_LRM_INVALID_PARAMETER;
     }
 
@@ -1082,24 +1073,28 @@ SGS_LRM_API SGSLrmStatus SGSLrm_SetRange(SGSLrmHandle handle, int rangeMeters)
     command[4] = CalculateChecksum(command, 4);
 
     status = SendCommand(device, command, 5);
-    if (status == SGS_LRM_SUCCESS) {
-        device->currentRange = rangeMeters;
-    }
 
     LeaveCriticalSection(&device->lock);
     return status;
 }
 
-SGS_LRM_API SGSLrmStatus SGSLrm_SetResolution(SGSLrmHandle handle, int resolution)
+SGS_LRM_API SGSLrmStatus SGSLrm_SetResolution(SGSLrmHandle handle, SGSLrmResolution resolution)
 {
     SGSLrmStatus status = ValidateHandle(handle);
     if (status != SGS_LRM_SUCCESS) {
         return status;
     }
 
-    // Validate resolution values as per protocol specification
-    // Protocol: Resolution 1 = 1mm, Resolution 2 = 0.1mm
-    if (resolution != 1 && resolution != 2) {
+	unsigned char resolutionValue;
+    switch (resolution)
+    {
+    case SGS_LRM_RESOLUTION_1MM:
+		resolutionValue = 0x01;
+        break;
+    case SGS_LRM_RESOLUTION_100UM:
+        resolutionValue = 0x02;
+        break;
+    default:
         return SGS_LRM_INVALID_PARAMETER;
     }
 
@@ -1118,19 +1113,16 @@ SGS_LRM_API SGSLrmStatus SGSLrm_SetResolution(SGSLrmHandle handle, int resolutio
     command[0] = ADDR_BROADCAST;
     command[1] = CMD_CONFIG;
     command[2] = SUBCMD_SET_RESOLUTION;
-    command[3] = (unsigned char)resolution; // Direct mapping: 1->0x01, 2->0x02
+    command[3] = resolutionValue; // Direct mapping: 1->0x01, 2->0x02
     command[4] = CalculateChecksum(command, 4);
 
     status = SendCommand(device, command, 5);
-    if (status == SGS_LRM_SUCCESS) {
-        device->currentResolution = resolution;
-    }
 
     LeaveCriticalSection(&device->lock);
     return status;
 }
 
-SGS_LRM_API SGSLrmStatus SGSLrm_SetFrequency(SGSLrmHandle handle, int frequency)
+SGS_LRM_API SGSLrmStatus SGSLrm_SetFrequency(SGSLrmHandle handle, SGSLrmFrequency frequency)
 {
     SGSLrmStatus status = ValidateHandle(handle);
     if (status != SGS_LRM_SUCCESS) {
@@ -1140,10 +1132,9 @@ SGS_LRM_API SGSLrmStatus SGSLrm_SetFrequency(SGSLrmHandle handle, int frequency)
     // Validate and map frequency values according to protocol specification
     unsigned char freqValue;
     switch (frequency) {
-    case 3:  freqValue = 0x00; break;  // 3Hz (minimum frequency)
-    case 5:  freqValue = 0x05; break;  // 5Hz
-    case 10: freqValue = 0x0A; break;  // 10Hz  
-    case 20: freqValue = 0x14; break;  // 20Hz (maximum frequency)
+    case SGS_LRM_FREQUENCY_5HZ:  freqValue = 0x05; break;  // 5Hz
+    case SGS_LRM_FREQUENCY_10HZ: freqValue = 0x0A; break;  // 10Hz  
+    case SGS_LRM_FREQUENCY_20HZ: freqValue = 0x14; break;  // 20Hz (maximum frequency)
     default: return SGS_LRM_INVALID_PARAMETER;
     }
 
@@ -1165,9 +1156,6 @@ SGS_LRM_API SGSLrmStatus SGSLrm_SetFrequency(SGSLrmHandle handle, int frequency)
     command[4] = CalculateChecksum(command, 4);
 
     status = SendCommand(device, command, 5);
-    if (status == SGS_LRM_SUCCESS) {
-        device->currentFrequency = frequency;
-    }
 
     LeaveCriticalSection(&device->lock);
     return status;
@@ -1474,15 +1462,23 @@ SGS_LRM_API SGSLrmStatus SGSLrm_SetDistanceCorrection(SGSLrmHandle handle, int c
     return status;
 }
 
-SGS_LRM_API SGSLrmStatus SGSLrm_SetStartPosition(SGSLrmHandle handle, int position)
+SGS_LRM_API SGSLrmStatus SGSLrm_SetStartPosition(SGSLrmHandle handle, SGSLrmStartPosition position)
 {
     SGSLrmStatus status = ValidateHandle(handle);
     if (status != SGS_LRM_SUCCESS) {
         return status;
     }
 
-    // Validate position (0=tail, 1=top)
-    if (position != 0 && position != 1) {
+	unsigned char commandValue;
+    switch (position)
+    {
+    case SGS_LRM_START_POSITION_TAIL:
+        commandValue = 0x00;
+        break;
+	case SGS_LRM_START_POSITION_TOP:
+        commandValue = 0x01;
+		break;
+    default:
         return SGS_LRM_INVALID_PARAMETER;
     }
 
@@ -1500,7 +1496,7 @@ SGS_LRM_API SGSLrmStatus SGSLrm_SetStartPosition(SGSLrmHandle handle, int positi
     command[0] = ADDR_BROADCAST;
     command[1] = CMD_CONFIG;
     command[2] = SUBCMD_SET_POSITION;
-    command[3] = (unsigned char)position; // 0=tail, 1=top
+    command[3] = commandValue; // 0=tail, 1=top
     command[4] = CalculateChecksum(command, 4);
 
     status = SendCommand(device, command, 5);
@@ -1509,16 +1505,11 @@ SGS_LRM_API SGSLrmStatus SGSLrm_SetStartPosition(SGSLrmHandle handle, int positi
     return status;
 }
 
-SGS_LRM_API SGSLrmStatus SGSLrm_SetAutoMeasurement(SGSLrmHandle handle, int enable)
+SGS_LRM_API SGSLrmStatus SGSLrm_SetAutoMeasurement(SGSLrmHandle handle, bool enable)
 {
     SGSLrmStatus status = ValidateHandle(handle);
     if (status != SGS_LRM_SUCCESS) {
         return status;
-    }
-
-    // Validate enable flag (0=disable, 1=enable)
-    if (enable != 0 && enable != 1) {
-        return SGS_LRM_INVALID_PARAMETER;
     }
 
     SGSLrmDevice* device = (SGSLrmDevice*)handle;

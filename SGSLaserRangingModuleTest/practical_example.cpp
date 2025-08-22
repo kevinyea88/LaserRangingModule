@@ -78,7 +78,7 @@ SGSLrmStatus configure_for_indoor_measurement(SGSLrmHandle handle) {
     printf("Configuring device for indoor measurement...\n");
 
     // Set range to 30 meters (suitable for most indoor spaces)
-    status = SGSLrm_SetRange(handle, 30);
+    status = SGSLrm_SetRange(handle, SGS_LRM_RANGE_30M);
     if (status != SGS_LRM_SUCCESS) {
         printf("  ❌ Failed to set range: %d\n", status);
         return status;
@@ -86,7 +86,7 @@ SGSLrmStatus configure_for_indoor_measurement(SGSLrmHandle handle) {
     printf("  ✓ Range set to 30 meters\n");
 
     // Set high resolution (0.1mm) for precise indoor measurements
-    status = SGSLrm_SetResolution(handle, 2); // 2 = 0.1mm
+    status = SGSLrm_SetResolution(handle, SGS_LRM_RESOLUTION_100UM); // 2 = 0.1mm
     if (status != SGS_LRM_SUCCESS) {
         printf("  ❌ Failed to set resolution: %d\n", status);
         return status;
@@ -94,7 +94,7 @@ SGSLrmStatus configure_for_indoor_measurement(SGSLrmHandle handle) {
     printf("  ✓ Resolution set to 0.1mm\n");
 
     // Set moderate frequency for stable readings
-    status = SGSLrm_SetFrequency(handle, 10); // 10Hz
+    status = SGSLrm_SetFrequency(handle, SGS_LRM_FREQUENCY_10HZ); // 10Hz
     if (status != SGS_LRM_SUCCESS) {
         printf("  ❌ Failed to set frequency: %d\n", status);
         return status;
@@ -102,7 +102,7 @@ SGSLrmStatus configure_for_indoor_measurement(SGSLrmHandle handle) {
     printf("  ✓ Frequency set to 10Hz\n");
 
     // Set measurement from tail (default for most applications)
-    status = SGSLrm_SetStartPosition(handle, 0); // 0 = tail
+    status = SGSLrm_SetStartPosition(handle, SGS_LRM_START_POSITION_TAIL); // 0 = tail
     if (status != SGS_LRM_SUCCESS) {
         printf("  ❌ Failed to set start position: %d\n", status);
         return status;
@@ -119,17 +119,17 @@ SGSLrmStatus configure_for_outdoor_measurement(SGSLrmHandle handle) {
     printf("Configuring device for outdoor measurement...\n");
 
     // Set maximum range for outdoor use
-    status = SGSLrm_SetRange(handle, 80); // 80 meters max
+    status = SGSLrm_SetRange(handle, SGS_LRM_RANGE_80M); // 80 meters max
     if (status != SGS_LRM_SUCCESS) return status;
     printf("  ✓ Range set to 80 meters\n");
 
     // Use standard resolution for longer distances
-    status = SGSLrm_SetResolution(handle, 1); // 1 = 1mm
+    status = SGSLrm_SetResolution(handle, SGS_LRM_RESOLUTION_1MM); // 1 = 1mm
     if (status != SGS_LRM_SUCCESS) return status;
     printf("  ✓ Resolution set to 1mm\n");
 
     // Lower frequency for more stable long-range readings
-    status = SGSLrm_SetFrequency(handle, 5); // 5Hz
+    status = SGSLrm_SetFrequency(handle, SGS_LRM_FREQUENCY_5HZ); // 5Hz
     if (status != SGS_LRM_SUCCESS) return status;
     printf("  ✓ Frequency set to 5Hz\n");
 
