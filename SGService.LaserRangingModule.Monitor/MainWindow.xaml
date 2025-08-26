@@ -3,66 +3,146 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:SGService.LaserRangingModule.Monitor"
+        xmlns:vm="clr-namespace:SGService.LaserRangingModule.Monitor.ViewModels"
         mc:Ignorable="d"
-        Title="LaserRangingModuleMonitor" Height="450" Width="800">
+        Title="LaserRangingModuleMonitor"
+        Height="450" Width="800"
+        UseLayoutRounding="True" SnapsToDevicePixels="True">
+
     <Grid>
         <TabControl>
             <TabItem Header="Config">
                 <Grid Background="#FFE5E5E5">
-                    <!-- 同一列：狀態(左) → 標籤 → 下拉 → 重新整理 → Connect(右) -->
-                    <Grid Margin="12">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <!-- 狀態 -->
-                            <ColumnDefinition Width="12"/>
-                            <!-- 間距 -->
-                            <ColumnDefinition Width="Auto"/>
-                            <!-- 標籤 -->
-                            <ColumnDefinition Width="8"/>
-                            <ColumnDefinition Width="*"/>
-                            <!-- 下拉（彈性伸展） -->
-                            <ColumnDefinition Width="8"/>
-                            <ColumnDefinition Width="Auto"/>
-                            <!-- Refresh/掃描 -->
-                            <ColumnDefinition Width="12"/>
-                            <ColumnDefinition Width="Auto"/>
-                            <!-- Connect(主要動作) -->
-                        </Grid.ColumnDefinitions>
+                    <Grid Margin="12" VerticalAlignment="Top">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <!-- 工具列 -->
+                            <RowDefinition Height="*"/>
+                            <!-- 保留空間 -->
+                        </Grid.RowDefinitions>
 
-                        <!-- 狀態指示：固定顯示 Disconnected（先不綁邏輯） -->
-                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                            <Ellipse x:Name="ConnDot" Width="10" Height="10" Fill="Gray" Margin="0,0,6,0"/>
-                            <TextBlock x:Name="TxtConnStatus" Text="Disconnected" VerticalAlignment="Center"/>
-                        </StackPanel>
+                        <!-- Row 0：上方工具列 -->
+                        <Grid Grid.Row="0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
 
-                        <!-- 標籤 -->
-                        <TextBlock Grid.Column="2" Text="可用 COM：" VerticalAlignment="Center"/>
-
-                        <!-- 下拉 -->
-                        <ComboBox x:Name="CmbPorts" Grid.Column="4" Width="220"/>
-
-                        <!-- 重新整理（沿用你的掃描事件） -->
-                        <Button x:Name="BtnScan"
-                                Grid.Column="6"
-                                Content="掃描"
-                                Width="80"
-                                Click="BtnScan_Click"/>
-
-                        <!-- Connect 主要動作（先不綁 Click、不寫邏輯） -->
-                        <Button x:Name="BtnConnect"
-                                Grid.Column="8"
-                                Content="Connect"
-                                Width="100"
-                                IsEnabled="False"
-                                Click="BtnConnect_Click"/>
+                            <TextBlock Grid.Column="0" Text="可用 COM：" VerticalAlignment="Center"/>
+                            <ComboBox Grid.Column="2" Width="220"
+                  ItemsSource="{Binding AvailablePorts}"
+                  SelectedItem="{Binding SelectedPortName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                            <Button Grid.Column="4" Width="80" Content="掃描"
+                Command="{Binding ScanCommand}"/>
+                            <Button Grid.Column="6" Width="90" Content="加入"
+                Command="{Binding AddSelectedPortCommand}"/>
+                        </Grid>
                     </Grid>
                 </Grid>
             </TabItem>
-            <TabItem Header="Measurement">
-                <Grid Background="#FFE5E5E5"/>
-            </TabItem>
-        </TabControl>
 
+
+            <TabItem Header="Measurement">
+                <Grid Background="#FFE5E5E5">
+                    <Grid Margin="12" VerticalAlignment="Top">
+                        <!-- 清單：綁 SelectedPorts -->
+                        <ItemsControl ItemsSource="{Binding SelectedPorts}">
+                            <!-- 空清單時顯示提示（可拿掉） -->
+                            <ItemsControl.Style>
+                                <Style TargetType="ItemsControl">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <Trigger Property="HasItems" Value="True">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ItemsControl.Style>
+
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Padding="8" Margin="0,0,0,8" BorderBrush="#DDD" BorderThickness="1" CornerRadius="4">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <!-- COM 標籤 -->
+                                                <ColumnDefinition Width="12"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <!-- ADDR 標籤 -->
+                                                <ColumnDefinition Width="6"/>
+                                                <ColumnDefinition Width="90"/>
+                                                <!-- ADDR 輸入框 -->
+                                                <ColumnDefinition Width="12"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <!-- 參數說明 -->
+                                                <ColumnDefinition Width="Auto"/>
+                                                <!-- Connect/Disconnect -->
+                                                <ColumnDefinition Width="8"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <!-- 移除 -->
+                                            </Grid.ColumnDefinitions>
+
+                                            <TextBlock Grid.Column="0" Text="{Binding Port}" FontWeight="Bold" VerticalAlignment="Center"/>
+
+                                            <TextBlock Grid.Column="2" Text="ADDR:" VerticalAlignment="Center"/>
+                                            <TextBox Grid.Column="4"
+                         Text="{Binding Address, UpdateSourceTrigger=PropertyChanged}"
+                         HorizontalContentAlignment="Right"
+                         VerticalContentAlignment="Center"
+                         Height="28"
+                         PreviewTextInput="Addr_PreviewTextInput"
+                         DataObject.Pasting="Addr_Pasting"
+                         IsReadOnly="{Binding IsConnected}"
+                         ToolTip="0–255（連線後會鎖定）"/>
+
+                                            <TextBlock Grid.Column="6" Text="Serial: 9600-8-N-1"
+                           VerticalAlignment="Center" Opacity="0.85"/>
+
+                                            <!-- 若你已改成 MVVM 命令 -->
+                                            <Button Grid.Column="7" Width="100"
+                        Content="{Binding ConnectButtonText}"
+                        Command="{Binding ToggleConnectCommand}"/>
+                                            <Button Grid.Column="9" Width="80" Content="移除"
+                        Command="{Binding RemoveCommand}"/>
+
+                                            <!-- 如果你目前仍是 Click 版本，改成：
+                <Button Grid.Column="7" Width="100"
+                        Content="{Binding ConnectButtonText}"
+                        Click="RowConnectButton_Click" Tag="{Binding}"/>
+                <Button Grid.Column="9" Width="80" Content="移除"
+                        Click="RowRemoveButton_Click" Tag="{Binding}"/> -->
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- 空清單提示（可選） -->
+                        <TextBlock Margin="0,12,0,0" FontStyle="Italic" Foreground="#666"
+                 Text="尚未加入任何裝置，請到 Config 分頁選擇 COM 並按「加入」。">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SelectedPorts.Count}" Value="0">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding SelectedPorts.Count}" Value="1">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Grid>
+                </Grid>
+            </TabItem>
+
+        </TabControl>
     </Grid>
 </Window>
