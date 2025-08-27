@@ -10,6 +10,13 @@ namespace SGService.LaserRangingModule.Monitor.Services
         int Connect(string port);          // 0 表成功
         int Disconnect();                  // 0 表成功
         int SetAddress(int address);       // 0 表成功
+        int SetRange(LrmRange range);
+        int SetResolution(LrmResolution resolution);
+        int SetFrequency(LrmFrequency frequency);
+        int SetStartPosition(LrmStartPosition pos);
+        int SetMeasurementInterval(int intervalMs);
+        int SetAutoMeasurement(bool enable);
+        int SetDistanceCorrection(int mm);
     }
 
     public sealed class SgsLrmDeviceService : ILaserDeviceService
@@ -66,5 +73,48 @@ namespace SGService.LaserRangingModule.Monitor.Services
             }
             return port;
         }
+
+        public int SetRange(LrmRange range)
+        {
+            if (_handle == 0 || !IsConnected) return -1;
+            return NativeSgsLrm.SetRange(_handle, range);
+        }
+
+        public int SetResolution(LrmResolution resolution)
+        {
+            if (_handle == 0 || !IsConnected) return -1;
+            return NativeSgsLrm.SetResolution(_handle, resolution);
+        }
+
+        public int SetFrequency(LrmFrequency freq)
+        {
+            if (_handle == 0 || !IsConnected) return -1;
+            return NativeSgsLrm.SetFrequency(_handle, freq);
+        }
+
+        public int SetStartPosition(LrmStartPosition pos)
+        {
+            if (_handle == 0 || !IsConnected) return -1;
+            return NativeSgsLrm.SetStartPosition(_handle, pos);
+        }
+
+        public int SetMeasurementInterval(int intervalMs)
+        {
+            if (_handle == 0 || !IsConnected) return -1;
+            return NativeSgsLrm.SetMeasurementInterval(_handle, intervalMs);
+        }
+
+        public int SetAutoMeasurement(bool enable)
+        {
+            if (_handle == 0 || !IsConnected) return -1;
+            return NativeSgsLrm.SetAutoMeasurement(_handle, enable);
+        }
+
+        public int SetDistanceCorrection(int mm)
+        {
+            if (_handle == 0 || !IsConnected) return -1;
+            return NativeSgsLrm.SetDistanceCorrection(_handle, mm);
+        }
+
     }
 }

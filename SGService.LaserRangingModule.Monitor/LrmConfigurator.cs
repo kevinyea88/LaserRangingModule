@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace SGService.LaserRangingModule.Monitor
 {
-    internal class LrmConfigurator
+    public class LrmConfigurator
     {
         public void ConfigureDevice(string portName, LrmParameters parameters)
         { 

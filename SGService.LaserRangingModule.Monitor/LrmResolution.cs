@@ -6,9 +6,9 @@ using System.Threading.Tasks;
 
 namespace SGService.LaserRangingModule.Monitor
 {
-    internal enum LrmResolution
+    public enum LrmResolution
     {
-        OneMillimeter,
-        OneHundredMicormeter
+        OneMillimeter = 1,     // 1mm
+        OneHundredMicormeter   // 0.1mm
     }
 }

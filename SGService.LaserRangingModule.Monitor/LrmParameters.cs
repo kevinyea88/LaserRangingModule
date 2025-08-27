@@ -2,7 +2,7 @@
 {
     // immutable
 
-    internal record LrmParameters
+    public record LrmParameters
     {
         public int Address { get; init; } = 0x80;
 

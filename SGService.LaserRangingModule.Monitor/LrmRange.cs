@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace SGService.LaserRangingModule.Monitor
 {
-    internal enum LrmRange
+    public enum LrmRange
     {
         FiveMeter,
         TenMeter,

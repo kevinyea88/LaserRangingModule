@@ -1,6 +1,6 @@
 ﻿namespace SGService.LaserRangingModule.Monitor
 {
-    internal enum LrmStartPosition
+    public enum LrmStartPosition
     {
         Tail,
         Top

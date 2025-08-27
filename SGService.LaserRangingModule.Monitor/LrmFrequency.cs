@@ -1,6 +1,6 @@
 ﻿namespace SGService.LaserRangingModule.Monitor
 {
-    internal enum LrmFrequency
+    public enum LrmFrequency
     {
         FiveHerz,
         TenHerz,
