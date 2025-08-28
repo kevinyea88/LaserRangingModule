@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "SGService.LaserRangingModule.Monitor": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "Path": "$(Path);$(SolutionDir)$(Platform)\\$(Configuration)"
+      }
+    }
+  }
+}

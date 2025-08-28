@@ -1,5 +1,6 @@
-﻿using System.ComponentModel;
-using SGService.LaserRangingModule.Monitor.Services;
+﻿using SGService.LaserRangingModule.Monitor.Services;
+using System.ComponentModel;
+using System.Windows;
 
 namespace SGService.LaserRangingModule.Monitor.ViewModels
 {
@@ -51,11 +52,26 @@ namespace SGService.LaserRangingModule.Monitor.ViewModels
         {
             if (!IsConnected)
             {
+                // 先打開指定 Port
                 var rc = _dev.Connect(Port);
                 if (rc == 0)
                 {
-                    // 之後若要自動套用位址，就在這裡呼叫 _dev.SetAddress(Address)
-                    IsConnected = true;
+                    // 連線成功後設置模組位址，以區分匯流排上的多台設備
+                    rc = _dev.SetAddress(Address);
+                    if (rc == 0)
+                    {
+                        IsConnected = true;
+                    }
+                    else
+                    {
+                    System.Windows.MessageBox.Show(
+                        $"設定位址失敗 (rc={rc})，請確認裝置是否在線",
+                        "錯誤",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Error);
+                        // 設置失敗即斷線，避免設備處於未知狀態
+                        _dev.Disconnect();
+                     }
                 }
                 else
                 {
@@ -65,6 +81,7 @@ namespace SGService.LaserRangingModule.Monitor.ViewModels
             }
             else
             {
+                // 斷線並恢復 UI 狀態
                 _dev.Disconnect();
                 IsConnected = false;
             }

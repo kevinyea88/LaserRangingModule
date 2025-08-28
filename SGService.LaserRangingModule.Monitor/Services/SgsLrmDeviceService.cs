@@ -17,6 +17,8 @@ namespace SGService.LaserRangingModule.Monitor.Services
         int SetMeasurementInterval(int intervalMs);
         int SetAutoMeasurement(bool enable);
         int SetDistanceCorrection(int mm);
+        int BroadcastMeasurement();
+        int ReadCache(out double distance);
     }
 
     public sealed class SgsLrmDeviceService : ILaserDeviceService
@@ -114,6 +116,19 @@ namespace SGService.LaserRangingModule.Monitor.Services
         {
             if (_handle == 0 || !IsConnected) return -1;
             return NativeSgsLrm.SetDistanceCorrection(_handle, mm);
+        }
+
+        public int BroadcastMeasurement()
+        {
+            if (_handle == 0 || !IsConnected) return -1;
+            return NativeSgsLrm.BroadcastMeasurement(_handle);
+        }
+
+        public int ReadCache(out double distance)
+        {
+            distance = 0;
+            if (_handle == 0 || !IsConnected) return -1;
+            return NativeSgsLrm.ReadCache(_handle, out distance);
         }
 
     }
