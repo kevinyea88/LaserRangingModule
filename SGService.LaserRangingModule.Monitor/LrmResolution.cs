@@ -8,7 +8,7 @@ namespace SGService.LaserRangingModule.Monitor
 {
     public enum LrmResolution
     {
-        OneMillimeter = 1,     // 1mm
+        OneMillimeter,     // 1mm
         OneHundredMicormeter   // 0.1mm
     }
 }

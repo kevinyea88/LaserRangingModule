@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 
 #if defined(_SGS_LRM_EXPORT)
 #define SGS_LRM_API __declspec(dllexport)

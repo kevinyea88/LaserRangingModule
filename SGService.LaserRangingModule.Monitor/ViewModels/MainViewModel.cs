@@ -10,7 +10,7 @@ namespace SGService.LaserRangingModule.Monitor.ViewModels
     {
         private static LrmRange _lastRange = LrmRange.FiveMeter;
         private static LrmResolution _lastResolution = LrmResolution.OneMillimeter;
-        private static LrmFrequency _lastFrequency = LrmFrequency.OneHerz;
+        private static LrmFrequency _lastFrequency = default(LrmFrequency);
         private LrmRange _rangeSetting;
         public ObservableCollection<string> AvailablePorts { get; } = new();
         public ObservableCollection<PortRowViewModel> SelectedPorts { get; } = new();
