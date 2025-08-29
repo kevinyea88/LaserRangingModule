@@ -1,6 +1,8 @@
 ﻿using SGService.LaserRangingModule.Monitor.Services;
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Threading;
+using SGService.LaserRangingModule.Monitor.Models;
 
 namespace SGService.LaserRangingModule.Monitor.ViewModels
 {
@@ -29,6 +31,53 @@ namespace SGService.LaserRangingModule.Monitor.ViewModels
             }
         }
 
+        // Add these new properties after the Address property
+
+        private bool _isSelectedForChart;
+        public bool IsSelectedForChart
+        {
+            get => _isSelectedForChart;
+            set
+            {
+                if (_isSelectedForChart == value) return;
+                _isSelectedForChart = value;
+                PropertyChanged?.Invoke(this, new(nameof(IsSelectedForChart)));
+
+                // Auto-deselect when disconnected
+                if (value && !IsConnected)
+                {
+                    _isSelectedForChart = false;
+                    PropertyChanged?.Invoke(this, new(nameof(IsSelectedForChart)));
+                }
+            }
+        }
+
+        private bool _isMeasuring;
+        public bool IsMeasuring
+        {
+            get => _isMeasuring;
+            set
+            {
+                if (_isMeasuring == value) return;
+                _isMeasuring = value;
+                PropertyChanged?.Invoke(this, new(nameof(IsMeasuring)));
+                PropertyChanged?.Invoke(this, new(nameof(ConnectionStatus)));
+            }
+        }
+
+        // Computed properties for binding
+        public string PortName => Port;  // Alias for existing Port property
+
+        public string ConnectionStatus
+        {
+            get
+            {
+                if (!IsConnected) return "Disconnected";
+                if (IsMeasuring) return "Measuring";
+                return "Connected";
+            }
+        }
+
         private bool _isConnected;
         public bool IsConnected
         {
@@ -39,7 +88,14 @@ namespace SGService.LaserRangingModule.Monitor.ViewModels
                 _isConnected = value;
                 PropertyChanged?.Invoke(this, new(nameof(IsConnected)));
                 PropertyChanged?.Invoke(this, new(nameof(ConnectButtonText)));
+                PropertyChanged?.Invoke(this, new(nameof(ConnectionStatus)));
                 RemoveCommand.RaiseCanExecuteChanged();
+
+                // Auto-deselect from chart when disconnected
+                if (!value && IsSelectedForChart)
+                {
+                    IsSelectedForChart = false;
+                }
             }
         }
 

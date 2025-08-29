@@ -1,4 +1,5 @@
-﻿using SGService.LaserRangingModule.Monitor.Services;
+﻿using SGService.LaserRangingModule.Monitor.Models;
+using SGService.LaserRangingModule.Monitor.Services;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO.Ports;
@@ -58,6 +59,50 @@ namespace SGService.LaserRangingModule.Monitor.ViewModels
                     ApplySettingsCommand.RaiseCanExecuteChanged();
                 }
             };
+            // Add these lines at the end of your existing constructor
+
+            // Initialize new commands
+            StartSelectedCommand = new RelayCommand(
+                _ => StartSelectedDevices(),
+                _ => HasSelectedDevicesForChart && SelectedPorts.Any(p => p.IsSelectedForChart && p.IsConnected));
+
+            StopAllCommand = new RelayCommand(
+                _ => StopAllDevices(),
+                _ => SelectedPorts.Any(p => p.IsMeasuring));
+
+            // Monitor collection changes for device count updates
+            SelectedPorts.CollectionChanged += (s, e) =>
+            {
+                PropertyChanged?.Invoke(this, new(nameof(DeviceCount)));
+                PropertyChanged?.Invoke(this, new(nameof(HasSelectedDevicesForChart)));
+                StartSelectedCommand.RaiseCanExecuteChanged();
+                StopAllCommand.RaiseCanExecuteChanged();
+            };
+
+            // Add these lines at the end of your existing constructor
+
+            // Initialize data management commands
+            ClearAllDataCommand = new RelayCommand(
+                _ => ClearAllData(),
+                _ => ChartData.HasAnyData);
+
+            ClearDeviceDataCommand = new RelayCommand(
+                param => ClearDeviceData(param?.ToString() ?? ""),
+                param => !string.IsNullOrEmpty(param?.ToString()));
+
+
+            // Monitor chart data changes for command updates
+            ChartData.PropertyChanged += (s, e) =>
+            {
+                ClearAllDataCommand.RaiseCanExecuteChanged();
+
+                // Auto-select first device for stats if none selected
+                if (SelectedDeviceForStats == null && ChartData.AllDeviceData.Any())
+                {
+                    SelectedDeviceForStats = ChartData.AllDeviceData.First();
+                }
+            };
+
         }
 
         // MainViewModel.cs
@@ -147,10 +192,21 @@ namespace SGService.LaserRangingModule.Monitor.ViewModels
                 {
                     SelectedPorts.Remove(me);
                     AddSelectedPortCommand.RaiseCanExecuteChanged();
+                    UpdateCommandStates();
                 });
+            row.PropertyChanged += (s, e) =>
+            {
+                if (e.PropertyName == nameof(PortRowViewModel.IsConnected) ||
+                    e.PropertyName == nameof(PortRowViewModel.IsSelectedForChart) ||
+                    e.PropertyName == nameof(PortRowViewModel.IsMeasuring))
+                {
+                    UpdateCommandStates();
+                }
+            };
 
             SelectedPorts.Add(row);
             AddSelectedPortCommand.RaiseCanExecuteChanged();
+            UpdateCommandStates();
         }
 
         public LrmRange RangeSetting
@@ -194,7 +250,166 @@ namespace SGService.LaserRangingModule.Monitor.ViewModels
             }
         }
 
+        // Add these new properties after FrequencySetting
+
+        private string _statusMessage = "Ready";
+        public string StatusMessage
+        {
+            get => _statusMessage;
+            set
+            {
+                if (_statusMessage == value) return;
+                _statusMessage = value;
+                PropertyChanged?.Invoke(this, new(nameof(StatusMessage)));
+            }
+        }
+
+        public int DeviceCount => SelectedPorts.Count;
+
+        // New commands for measurement control
+        public RelayCommand StartSelectedCommand { get; }
+        public RelayCommand StopAllCommand { get; }
+
+        // Add these properties after StopAllCommand
+
+        // Chart data management
+        public ChartDataManager ChartData { get; } = new ChartDataManager();
+
+        // Statistics for selected device (single device focus as per design)
+        private DeviceChartData? _selectedDeviceForStats;
+        public DeviceChartData? SelectedDeviceForStats
+        {
+            get => _selectedDeviceForStats;
+            set
+            {
+                if (_selectedDeviceForStats == value) return;
+                _selectedDeviceForStats = value;
+                PropertyChanged?.Invoke(this, new(nameof(SelectedDeviceForStats)));
+                PropertyChanged?.Invoke(this, new(nameof(HasStatsDevice)));
+            }
+        }
+
+        public bool HasStatsDevice => SelectedDeviceForStats != null;
+
+        // Commands for data management
+        public RelayCommand ClearAllDataCommand { get; }
+        public RelayCommand ClearDeviceDataCommand { get; }
+
+        // Computed property for UI state
+        public bool HasSelectedDevicesForChart => SelectedPorts.Any(p => p.IsSelectedForChart);
+
 
         public event PropertyChangedEventHandler? PropertyChanged;
+
+        // Add these new methods
+
+        private void StartSelectedDevices()
+        {
+            var selectedDevices = SelectedPorts.Where(p => p.IsSelectedForChart && p.IsConnected).ToList();
+
+            if (!selectedDevices.Any())
+            {
+                StatusMessage = "No connected devices selected for chart";
+                return;
+            }
+
+            StatusMessage = $"Starting measurement for {selectedDevices.Count} device(s)...";
+
+            foreach (var device in selectedDevices)
+            {
+                // Stop any existing measurement
+                if (device.IsMeasuring)
+                {
+                    device.IsMeasuring = false;
+                    // TODO: Stop actual measurement (will implement in later steps)
+                }
+
+                // Clear old data for fresh start (as per design)
+                ChartData.ClearDevice(device.PortName);
+
+                // Start fresh measurement
+                device.IsMeasuring = true;
+                // TODO: Start actual measurement (will implement in later steps)
+            }
+
+            StatusMessage = $"Measuring with {selectedDevices.Count} device(s) - fresh data";
+            UpdateCommandStates();
+        }
+
+        private void StopAllDevices()
+        {
+            var measuringDevices = SelectedPorts.Where(p => p.IsMeasuring).ToList();
+
+            foreach (var device in measuringDevices)
+            {
+                device.IsMeasuring = false;
+                // TODO: Stop actual measurement (will implement in later steps)
+            }
+
+            StatusMessage = $"Stopped {measuringDevices.Count} device(s)";
+            UpdateCommandStates();
+        }
+
+        private void UpdateCommandStates()
+        {
+            StartSelectedCommand.RaiseCanExecuteChanged();
+            StopAllCommand.RaiseCanExecuteChanged();
+            PropertyChanged?.Invoke(this, new(nameof(HasSelectedDevicesForChart)));
+        }
+
+        // Add these new methods
+
+        private void ClearAllData()
+        {
+            ChartData.ClearAllData();
+            StatusMessage = "Cleared all chart data";
+            ClearAllDataCommand.RaiseCanExecuteChanged();
+        }
+
+        private void ClearDeviceData(string deviceName)
+        {
+            if (string.IsNullOrEmpty(deviceName)) return;
+
+            ChartData.ClearDevice(deviceName);
+            StatusMessage = $"Cleared data for {deviceName}";
+            ClearAllDataCommand.RaiseCanExecuteChanged();
+        }
+
+        // Method to add measurement data (will be called from measurement logic)
+        public void AddMeasurementData(string deviceName, double distance)
+        {
+            var deviceData = ChartData.GetOrCreateDeviceData(deviceName);
+            deviceData.AddSuccessPoint(distance);
+
+            // Auto-select for stats if this is the first device with data
+            if (SelectedDeviceForStats == null)
+            {
+                SelectedDeviceForStats = deviceData;
+            }
+        }
+
+        public void AddMeasurementError(string deviceName, string errorMessage)
+        {
+            var deviceData = ChartData.GetOrCreateDeviceData(deviceName);
+            deviceData.AddErrorPoint(errorMessage);
+        }
+
+        // Method to handle device removal from chart
+        public void RemoveDeviceFromChart(string deviceName)
+        {
+            ChartData.RemoveDevice(deviceName);
+
+            // Update stats selection if removed device was selected
+            if (SelectedDeviceForStats?.DeviceName == deviceName)
+            {
+                SelectedDeviceForStats = ChartData.AllDeviceData.FirstOrDefault();
+            }
+        }
     }
+
+
+
+
+
 }
+
