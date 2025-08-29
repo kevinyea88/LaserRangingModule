@@ -184,7 +184,6 @@ namespace SGService.LaserRangingModule.Monitor.ViewModels
         {
             if (string.IsNullOrWhiteSpace(SelectedPortName)) return;
 
-            // 不再檢查 SelectedPorts.Any(...)；讓使用者自己調整每一個 Address
             var row = new PortRowViewModel(
                 SelectedPortName!,
                 new SgsLrmDeviceService(),
@@ -194,6 +193,8 @@ namespace SGService.LaserRangingModule.Monitor.ViewModels
                     AddSelectedPortCommand.RaiseCanExecuteChanged();
                     UpdateCommandStates();
                 });
+
+            // Wire up property change notifications for command updates
             row.PropertyChanged += (s, e) =>
             {
                 if (e.PropertyName == nameof(PortRowViewModel.IsConnected) ||
@@ -204,10 +205,22 @@ namespace SGService.LaserRangingModule.Monitor.ViewModels
                 }
             };
 
+            // Wire up measurement events for chart data
+            row.MeasurementReceived += (deviceName, distance) =>
+            {
+                AddMeasurementData(deviceName, distance);
+            };
+
+            row.MeasurementErrorReceived += (deviceName, errorMessage) =>
+            {
+                AddMeasurementError(deviceName, errorMessage);
+            };
+
             SelectedPorts.Add(row);
             AddSelectedPortCommand.RaiseCanExecuteChanged();
             UpdateCommandStates();
         }
+
 
         public LrmRange RangeSetting
         {
@@ -320,19 +333,17 @@ namespace SGService.LaserRangingModule.Monitor.ViewModels
                 // Stop any existing measurement
                 if (device.IsMeasuring)
                 {
-                    device.IsMeasuring = false;
-                    // TODO: Stop actual measurement (will implement in later steps)
+                    device.StopMeasurement();
                 }
 
                 // Clear old data for fresh start (as per design)
                 ChartData.ClearDevice(device.PortName);
 
                 // Start fresh measurement
-                device.IsMeasuring = true;
-                // TODO: Start actual measurement (will implement in later steps)
+                device.StartMeasurement();
             }
 
-            StatusMessage = $"Measuring with {selectedDevices.Count} device(s) - fresh data";
+            StatusMessage = $"Measuring with {selectedDevices.Count} device(s) - real-time data";
             UpdateCommandStates();
         }
 
@@ -342,8 +353,7 @@ namespace SGService.LaserRangingModule.Monitor.ViewModels
 
             foreach (var device in measuringDevices)
             {
-                device.IsMeasuring = false;
-                // TODO: Stop actual measurement (will implement in later steps)
+                device.StopMeasurement();
             }
 
             StatusMessage = $"Stopped {measuringDevices.Count} device(s)";

@@ -7,6 +7,7 @@ namespace SGService.LaserRangingModule.Monitor.Services
     public interface ILaserDeviceService : IDisposable
     {
         bool IsConnected { get; }
+        nint Handle { get; }
         int Connect(string port);          // 0 表成功
         int Disconnect();                  // 0 表成功
         int SetAddress(int address);       // 0 表成功
@@ -26,6 +27,7 @@ namespace SGService.LaserRangingModule.Monitor.Services
         private nint _handle;
         public bool IsConnected { get; private set; }
 
+        public nint Handle => _handle;
         public int Connect(string port)
         {
             if (_handle == 0)
